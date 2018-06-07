@@ -40,6 +40,9 @@
 
 namespace rph {
     
+    // Regular Sound Player
+    // -----------------------------------------------------------------------------------------------
+    
     SoundPlayerRef SoundPlayer::create(const DataSourceRef &source, size_t maxFramesForBufferPlayback)
     {
         SoundPlayerRef ref(new SoundPlayer(source, maxFramesForBufferPlayback));
@@ -110,5 +113,49 @@ namespace rph {
     void SoundPlayer::pan(float from, float to, float seconds)
     {
         mPan->getParamPos()->applyRamp(from, to, seconds);
+    }
+    
+    // Multichannel Sound Player
+    // -----------------------------------------------------------------------------------------------
+    
+    SoundPlayerMultiRef SoundPlayerMulti::create(const DataSourceRef &source, int numChannels, size_t maxFramesForBufferPlayback)
+    {
+        SoundPlayerMultiRef ref(new SoundPlayerMulti(source, numChannels, maxFramesForBufferPlayback));
+        return ref;
+    }
+    
+    SoundPlayerMulti::SoundPlayerMulti(const DataSourceRef &source, int numChannels, size_t maxFramesForBufferPlayback)
+    {
+        mNumChannels = numChannels;
+        
+        audio::SourceFileRef sourceFile = audio::load(source);
+        audio::Context *ctx = audio::Context::master();
+        
+        // Load source file in memory or stream from file depending on its size
+        if (sourceFile->getNumFrames() <= maxFramesForBufferPlayback) {
+            mPlayer = ctx->makeNode(new audio::BufferPlayerNode(sourceFile->loadBuffer()));
+        }
+        else {
+            mPlayer = ctx->makeNode(new audio::FilePlayerNode(sourceFile));
+        }
+        
+        // Create multi-channel node setup
+        auto gainFormat = audio::Node::Format().channels(1); // mono to make it sum all channels
+        auto routerFormat = audio::Node::Format().channels(mNumChannels);
+        
+        mGain   = ctx->makeNode(new audio::GainNode(gainFormat));
+        mRouter = ctx->makeNode(new audio::ChannelRouterNode(routerFormat));
+        mPan    = ctx->makeNode(new audio::Pan2dNode()); // a bit useless here
+        mPlayer >> mPan >> mGain;
+        
+        for (int i = 0; i < mNumChannels; i++) {
+            // auto router = ctx->makeNode(new audio::ChannelRouterNode(routerFormat)); // we can use the same router node
+            auto channelGain = ctx->makeNode(new audio::GainNode(gainFormat));
+            mGains.emplace_back(channelGain);
+            mGain >> channelGain >> mRouter->route(0, i) >> ctx->getOutput();
+        }
+        
+        // Start context
+        ctx->enable();
     }
 }

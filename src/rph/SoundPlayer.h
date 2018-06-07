@@ -40,6 +40,7 @@
 #include "cinder/audio/SamplePlayerNode.h"
 #include "cinder/audio/GainNode.h"
 #include "cinder/audio/PanNode.h"
+#include "cinder/audio/ChannelRouterNode.h"
 #include "cinder/Timeline.h"
 
 using namespace ci;
@@ -47,12 +48,14 @@ using namespace ci;
 namespace rph {
     
     typedef std::shared_ptr<class SoundPlayer> SoundPlayerRef;
-    
+    typedef std::shared_ptr<class SoundPlayerMulti> SoundPlayerMultiRef;
+
     class SoundPlayer {
-    public:
+      public:
         static SoundPlayerRef create(const DataSourceRef &source, size_t maxFramesForBufferPlayback = 20000);
         
-        SoundPlayer(const DataSourceRef &source, size_t maxFramesForBufferPlayback = 2000);
+        SoundPlayer() {};
+        SoundPlayer(const DataSourceRef &source, size_t maxFramesForBufferPlayback = 20000);
         ~SoundPlayer() {};
 
         // playback
@@ -66,7 +69,7 @@ namespace rph {
         void goToPercent(double percent)                        { mPlayer->seekToTime(percent * getDuration()); }   // 0.0 - 1.0
 
         // volume
-        void setVolume(float volume)                            { mGain->setValue(volume); }
+        virtual void setVolume(float volume)                            { mGain->setValue(volume); }
         void fadeTo(float volume, float seconds)                { fade(mGain->getValue(), volume, seconds); }
         void fadeOutAndStop(float seconds);
         void fadeOutAndPause(float seconds);
@@ -90,11 +93,30 @@ namespace rph {
         
         audio::SamplePlayerNodeRef getPlayerNode()              { return mPlayer; }
         
-    private:
+      protected:
         audio::SamplePlayerNodeRef  mPlayer;
         audio::GainNodeRef			mGain;
         audio::Pan2dNodeRef         mPan;
         Anim<float>                 mStopTimer;
+    };
+    
+    
+    class SoundPlayerMulti : public SoundPlayer {
+      public:
+        static SoundPlayerMultiRef create(const DataSourceRef &source, int numChannels, size_t maxFramesForBufferPlayback = 20000);
+        
+        SoundPlayerMulti() {};
+        SoundPlayerMulti(const DataSourceRef &source, int numChannels, size_t maxFramesForBufferPlayback = 20000);
+        ~SoundPlayerMulti() {};
+        
+        void setChannelVolume(int ch, float volume)             { mGains.at(ch)->setValue(volume); }
+        float getChannelVolume(int ch) const                    { return mGains.at(ch)->getValue(); }
+        
+      protected:
+        int                             mNumChannels;
+        audio::ChannelRouterNodeRef     mRouter;
+        std::vector<audio::GainNodeRef> mGains;
+        
     };
 }
 
